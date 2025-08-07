@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>護照拍照裁切 - 紅框比例修正</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: black;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #camera-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    video {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: black;
+      z-index: 1;
+    }
+    #canvas, #canvas-buffer {
+      display: none;
+    }
+    #red-frame {
+      position: absolute;
+      border: 3px solid red;
+      box-sizing: border-box;
+      z-index: 10;
+    }
+    #red-line {
+      position: absolute;
+      height: 3px;
+      background: red;
+      z-index: 11;
+    }
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      width: 100%;
+      text-align: center;
+      z-index: 20;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+    }
+    #preview-container {
+      display: none;
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 30;
+    }
+    #preview-container img {
+      max-width: 90%;
+      max-height: 80%;
+    }
+  </style>
+</head>
+<body>
+  <div id="camera-container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+    <canvas id="canvas-buffer"></canvas>
+    <div id="red-frame"></div>
+    <div id="red-line"></div>
+    <div id="controls">
+      <button id="capture">📸 拍照</button>
+    </div>
+    <div id="preview-container">
+      <img id="preview-image" />
+      <div>
+        <button id="retake">重新拍攝</button>
+        <button id="save">繼續拍攝</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const canvasBuffer = document.getElementById("canvas-buffer");
+    const captureBtn = document.getElementById("capture");
+    const previewContainer = document.getElementById("preview-container");
+    const previewImage = document.getElementById("preview-image");
+    const retakeBtn = document.getElementById("retake");
+    const saveBtn = document.getElementById("save");
+    const redFrame = document.getElementById("red-frame");
+    const redLine = document.getElementById("red-line");
+
+    function setRedFrameFromRatio(videoRatio) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let frameWidth, frameHeight;
+
+      // 計算紅框寬高，符合實際相機比例（1.42:1）
+      if (vw / vh > videoRatio) {
+        frameHeight = vh * 0.8;
+        frameWidth = frameHeight * videoRatio;
+      } else {
+        frameWidth = vw * 0.8;
+        frameHeight = frameWidth / videoRatio;
+      }
+
+      const frameLeft = (vw - frameWidth) / 2;
+      const frameTop = (vh - frameHeight) / 2;
+
+      redFrame.style.width = frameWidth + "px";
+      redFrame.style.height = frameHeight + "px";
+      redFrame.style.left = frameLeft + "px";
+      redFrame.style.top = frameTop + "px";
+
+      redLine.style.left = frameLeft + "px";
+      redLine.style.width = frameWidth + "px";
+      redLine.style.top = (frameTop + frameHeight / 2 - 1.5) + "px";
+    }
+
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" }, audio: false
+        });
+        video.srcObject = stream;
+
+        video.onloadedmetadata = () => {
+          const videoRatio = video.videoWidth / video.videoHeight;
+          setRedFrameFromRatio(videoRatio);
+        };
+      } catch (err) {
+        alert("無法存取相機: " + err);
+      }
+    }
+
+    function cropAndPreview() {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+
+      canvasBuffer.width = vw;
+      canvasBuffer.height = vh;
+      const bufferCtx = canvasBuffer.getContext("2d");
+      bufferCtx.drawImage(video, 0, 0, vw, vh);
+
+      const redBox = redFrame.getBoundingClientRect();
+      const videoBox = video.getBoundingClientRect();
+
+      const displayRatio = videoBox.width / videoBox.height;
+      const videoRatio = vw / vh;
+
+      let offsetX = 0, offsetY = 0;
+
+      if (displayRatio > videoRatio) {
+        offsetX = (videoBox.width - videoBox.height * videoRatio) / 2;
+      } else {
+        offsetY = (videoBox.height - videoBox.width / videoRatio) / 2;
+      }
+
+      const cropX = (redBox.left - videoBox.left - offsetX) * (vw / (videoBox.width - 2 * offsetX));
+      const cropY = (redBox.top - videoBox.top - offsetY + redBox.height / 2) * (vh / (videoBox.height - 2 * offsetY));
+      const cropW = redBox.width * (vw / (videoBox.width - 2 * offsetX));
+      const cropH = redBox.height / 2 * (vh / (videoBox.height - 2 * offsetY));
+
+      canvas.width = 1476;
+      canvas.height = 1040;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(canvasBuffer, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+
+      const dataURL = canvas.toDataURL("image/bmp");
+      previewImage.src = dataURL;
+      previewContainer.style.display = "flex";
+      saveBtn.dataset.url = dataURL;
+    }
+
+    captureBtn.onclick = () => cropAndPreview();
+    retakeBtn.onclick = () => previewContainer.style.display = "none";
+    saveBtn.onclick = () => {
+      const link = document.createElement("a");
+      link.href = saveBtn.dataset.url;
+      link.download = "passport.bmp";
+      link.click();
+      previewContainer.style.display = "none";
+    };
+
+    window.addEventListener("resize", () => {
+      if (video.videoWidth && video.videoHeight) {
+        setRedFrameFromRatio(video.videoWidth / video.videoHeight);
+      }
+    });
+
+    initCamera();
+  </script>
+</body>
+</html>
