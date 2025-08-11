@@ -253,21 +253,17 @@ function cropAndPreview() {
   const scaleX = vw / displayW;
   const scaleY = vh / displayH;
 
-  // 精確裁切下半部紅框區域（從紅線到紅框底部）
+  // 精確計算下半部紅框的裁切區域
   const frameLeftInVideo = (frameBox.left - videoBox.left - offsetX) * scaleX;
   const frameTopInVideo = (frameBox.top - videoBox.top - offsetY) * scaleY;
   const frameWidthInVideo = frameBox.width * scaleX;
   const frameHeightInVideo = frameBox.height * scaleY;
   
-  // 獲取紅線的實際位置（與 setRedFrame 中的計算一致）
-  const redLineBox = redLine.getBoundingClientRect();
-  const redLineTopInVideo = (redLineBox.top - videoBox.top - offsetY) * scaleY;
-  
-  const cropX = frameLeftInVideo;
-  const cropY = redLineTopInVideo; // 從紅線位置開始
-  const cropW = frameWidthInVideo;
-  // 裁切高度：從紅線到紅框底部
-  const cropH = (frameTopInVideo + frameHeightInVideo) - redLineTopInVideo;
+  // 下半部紅框的精確範圍
+  const cropX = Math.max(0, frameLeftInVideo);
+  const cropY = Math.max(0, frameTopInVideo + (frameHeightInVideo / 2));
+  const cropW = Math.min(vw - cropX, frameWidthInVideo);
+  const cropH = Math.min(vh - cropY, frameHeightInVideo / 2);
 
   // 設置 300 DPI 的護照規格輸出尺寸
   canvas.width = 1476;   // 300 DPI 護照寬度
@@ -278,8 +274,29 @@ function cropAndPreview() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
-  // 繪製影像
+  // 繪製影像並加上調試信息
   ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  
+  // 調試信息 (可選擇是否顯示)
+  console.log('裁切參數:', {
+    cropX: cropX.toFixed(2),
+    cropY: cropY.toFixed(2), 
+    cropW: cropW.toFixed(2),
+    cropH: cropH.toFixed(2),
+    frameBox: {
+      left: frameBox.left,
+      top: frameBox.top,
+      width: frameBox.width,
+      height: frameBox.height
+    },
+    videoBox: {
+      left: videoBox.left,
+      top: videoBox.top,
+      width: videoBox.width,
+      height: videoBox.height
+    },
+    offset: { offsetX, offsetY }
+  });
   
   // 應用影像品質增強
   enhanceImage(ctx, canvas.width, canvas.height);
