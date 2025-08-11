@@ -114,7 +114,6 @@ const previewContainer = document.getElementById("preview-container");
 const previewImage = document.getElementById("preview-image");
 const retakeBtn = document.getElementById("retake");
 const saveBtn = document.getElementById("save");
-
 const redFrame = document.getElementById("red-frame");
 const redLine = document.getElementById("red-line");
 
@@ -146,7 +145,9 @@ async function initCamera() {
       audio: false
     });
     video.srcObject = stream;
+    console.log("相機初始化成功");
   } catch (err) {
+    console.error("相機初始化失敗:", err);
     alert("無法存取相機: " + err);
   }
 }
@@ -204,34 +205,6 @@ function enhanceImage(ctx, width, height) {
   ctx.putImageData(imageData, 0, 0);
 }
 
-// 去噪處理
-function denoiseImage(ctx, width, height) {
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  const output = new Uint8ClampedArray(data);
-  
-  // 簡單的中值濾波去噪
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      for (let c = 0; c < 3; c++) {
-        const neighbors = [];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const index = ((y + dy) * width + (x + dx)) * 4 + c;
-            neighbors.push(data[index]);
-          }
-        }
-        neighbors.sort((a, b) => a - b);
-        const currentIndex = (y * width + x) * 4 + c;
-        output[currentIndex] = neighbors[4]; // 中位數
-      }
-    }
-  }
-  
-  const newImageData = new ImageData(output, width, height);
-  ctx.putImageData(newImageData, 0, 0);
-}
-
 function cropAndPreview() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
@@ -253,12 +226,6 @@ function cropAndPreview() {
   const scaleX = vw / displayW;
   const scaleY = vh / displayH;
 
-  // 精確計算下半部紅框的裁切區域
-  const frameLeftInVideo = (frameBox.left - videoBox.left - offsetX) * scaleX;
-  const frameTopInVideo = (frameBox.top - videoBox.top - offsetY) * scaleY;
-  const frameWidthInVideo = frameBox.width * scaleX;
-  const frameHeightInVideo = frameBox.height * scaleY;
-  
   // 直接裁切下半部紅框區域，不依賴護照比例
   const frameLeftInVideo = (frameBox.left - videoBox.left - offsetX) * scaleX;
   const frameTopInVideo = (frameBox.top - videoBox.top - offsetY) * scaleY;
@@ -287,32 +254,23 @@ function cropAndPreview() {
   // 繪製影像並加上調試信息
   ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
   
-  // 調試信息 (可選擇是否顯示)
+  // 調試信息
   console.log('裁切參數:', {
     cropX: cropX.toFixed(2),
     cropY: cropY.toFixed(2), 
     cropW: cropW.toFixed(2),
     cropH: cropH.toFixed(2),
+    redLineTop: redLineTopInVideo.toFixed(2),
     frameBox: {
       left: frameBox.left,
       top: frameBox.top,
       width: frameBox.width,
       height: frameBox.height
-    },
-    videoBox: {
-      left: videoBox.left,
-      top: videoBox.top,
-      width: videoBox.width,
-      height: videoBox.height
-    },
-    offset: { offsetX, offsetY }
+    }
   });
   
   // 應用影像品質增強
   enhanceImage(ctx, canvas.width, canvas.height);
-  
-  // 輕微去噪處理（只在必要時使用）
-  // denoiseImage(ctx, canvas.width, canvas.height);
 
   // 保存為無損的 BMP 格式，避免 Line 傳輸時的二次壓縮失真
   const dataURL = canvas.toDataURL("image/bmp");
@@ -332,6 +290,9 @@ saveBtn.onclick = () => {
 };
 
 window.addEventListener("resize", setRedFrame);
+
+// 確保相機初始化
+console.log("開始初始化相機...");
 initCamera();
 setRedFrame();
 </script>
