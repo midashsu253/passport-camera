@@ -253,13 +253,20 @@ function cropAndPreview() {
   const scaleX = vw / displayW;
   const scaleY = vh / displayH;
 
-  const cropX = (frameBox.left - videoBox.left - offsetX) * scaleX;
-  const cropY = (frameBox.top - videoBox.top - offsetY + frameBox.height / 2) * scaleY;
-  const cropW = frameBox.width * scaleX;
-  const cropH = (frameBox.height / 2) * scaleY;
+  // 精確裁切下半部紅框區域
+  const frameLeftInVideo = (frameBox.left - videoBox.left - offsetX) * scaleX;
+  const frameTopInVideo = (frameBox.top - videoBox.top - offsetY) * scaleY;
+  const frameWidthInVideo = frameBox.width * scaleX;
+  const frameHeightInVideo = frameBox.height * scaleY;
+  
+  const cropX = frameLeftInVideo;
+  const cropY = frameTopInVideo + frameHeightInVideo / 2; // 從紅線位置開始
+  const cropW = frameWidthInVideo;
+  const cropH = frameHeightInVideo / 2; // 下半部高度
 
-  canvas.width = 1476;
-  canvas.height = 1040;
+  // 設置 300 DPI 的護照規格輸出尺寸
+  canvas.width = 1476;   // 300 DPI 護照寬度
+  canvas.height = 1040;  // 300 DPI 護照高度
   const ctx = canvas.getContext("2d");
   
   // 設置高品質渲染
