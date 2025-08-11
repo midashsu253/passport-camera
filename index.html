@@ -137,12 +137,99 @@ function setRedFrame() {
 async function initCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }, audio: false
+      video: { 
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      }, 
+      audio: false
     });
     video.srcObject = stream;
   } catch (err) {
     alert("無法存取相機: " + err);
   }
+}
+
+// 影像品質增強功能
+function enhanceImage(ctx, width, height) {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  // 1. 亮度和對比度調整
+  const brightness = 10; // 增加亮度
+  const contrast = 1.15; // 增加對比度
+  
+  // 2. 銳化濾鏡核心
+  const sharpenKernel = [
+    0, -1, 0,
+    -1, 5, -1,
+    0, -1, 0
+  ];
+  
+  // 創建副本用於銳化處理
+  const originalData = new Uint8ClampedArray(data);
+  
+  for (let i = 0; i < data.length; i += 4) {
+    // 調整亮度和對比度
+    for (let j = 0; j < 3; j++) { // RGB通道
+      let pixel = data[i + j];
+      // 對比度調整
+      pixel = ((pixel - 128) * contrast) + 128;
+      // 亮度調整
+      pixel += brightness;
+      // 確保值在有效範圍內
+      data[i + j] = Math.max(0, Math.min(255, pixel));
+    }
+  }
+  
+  // 應用銳化濾鏡
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      for (let c = 0; c < 3; c++) { // RGB通道
+        let sum = 0;
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const pixelIndex = ((y + ky) * width + (x + kx)) * 4 + c;
+            const kernelIndex = (ky + 1) * 3 + (kx + 1);
+            sum += originalData[pixelIndex] * sharpenKernel[kernelIndex];
+          }
+        }
+        const currentIndex = (y * width + x) * 4 + c;
+        data[currentIndex] = Math.max(0, Math.min(255, sum));
+      }
+    }
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// 去噪處理
+function denoiseImage(ctx, width, height) {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const output = new Uint8ClampedArray(data);
+  
+  // 簡單的中值濾波去噪
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      for (let c = 0; c < 3; c++) {
+        const neighbors = [];
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const index = ((y + dy) * width + (x + dx)) * 4 + c;
+            neighbors.push(data[index]);
+          }
+        }
+        neighbors.sort((a, b) => a - b);
+        const currentIndex = (y * width + x) * 4 + c;
+        output[currentIndex] = neighbors[4]; // 中位數
+      }
+    }
+  }
+  
+  const newImageData = new ImageData(output, width, height);
+  ctx.putImageData(newImageData, 0, 0);
 }
 
 function cropAndPreview() {
@@ -174,8 +261,21 @@ function cropAndPreview() {
   canvas.width = 1476;
   canvas.height = 1040;
   const ctx = canvas.getContext("2d");
+  
+  // 設置高品質渲染
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  
+  // 繪製影像
   ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  
+  // 應用影像品質增強
+  enhanceImage(ctx, canvas.width, canvas.height);
+  
+  // 輕微去噪處理（只在必要時使用）
+  // denoiseImage(ctx, canvas.width, canvas.height);
 
+  // 保存為無損的 BMP 格式，避免 Line 傳輸時的二次壓縮失真
   const dataURL = canvas.toDataURL("image/bmp");
   previewImage.src = dataURL;
   previewContainer.style.display = "flex";
@@ -187,7 +287,7 @@ retakeBtn.onclick = () => previewContainer.style.display = "none";
 saveBtn.onclick = () => {
   const link = document.createElement("a");
   link.href = saveBtn.dataset.url;
-  link.download = "passport.bmp";
+  link.download = "passport.bmp"; // BMP 格式避免壓縮失真
   link.click();
   previewContainer.style.display = "none";
 };
