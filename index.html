@@ -123,7 +123,11 @@
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 4000 }, height: { ideal: 3000 } }, 
+          video: { 
+            facingMode: "environment",
+            width: { ideal: 4000 },
+            height: { ideal: 3000 }
+          }, 
           audio: false
         });
         video.srcObject = stream;
@@ -145,16 +149,18 @@
       const cropW = redFrameBox.width * scaleX;
       const cropH = (redFrameBox.height / 2) * scaleY;
 
-      // 暫存原始解析度裁切
+      // 原始解析度裁切
       const tempCanvas = document.createElement("canvas");
       tempCanvas.width = cropW;
       tempCanvas.height = cropH;
-      tempCanvas.getContext("2d").drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      const tempCtx = tempCanvas.getContext("2d");
+      tempCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-      // 最終輸出固定 1476x1040
+      // 縮放到最終輸出尺寸
       canvas.width = 1476;
       canvas.height = 1040;
-      canvas.getContext("2d").drawImage(tempCanvas, 0, 0, 1476, 1040);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(tempCanvas, 0, 0, 1476, 1040);
 
       const dataURL = canvas.toDataURL("image/bmp");
       previewImage.src = dataURL;
