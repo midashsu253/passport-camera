@@ -259,11 +259,21 @@ function cropAndPreview() {
   const frameWidthInVideo = frameBox.width * scaleX;
   const frameHeightInVideo = frameBox.height * scaleY;
   
-  // 下半部紅框的精確範圍（稍微擴大以確保完整包含）
-  const cropX = Math.max(0, frameLeftInVideo - 2); // 左邊稍微擴大2px
-  const cropY = Math.max(0, frameTopInVideo + (frameHeightInVideo / 2) - 1); // 上邊稍微往上1px
-  const cropW = Math.min(vw - cropX, frameWidthInVideo + 4); // 寬度稍微擴大4px
-  const cropH = Math.min(vh - cropY, (frameHeightInVideo / 2) + 3); // 高度稍微擴大3px
+  // 直接裁切下半部紅框區域，不依賴護照比例
+  const frameLeftInVideo = (frameBox.left - videoBox.left - offsetX) * scaleX;
+  const frameTopInVideo = (frameBox.top - videoBox.top - offsetY) * scaleY;
+  const frameWidthInVideo = frameBox.width * scaleX;
+  const frameHeightInVideo = frameBox.height * scaleY;
+  
+  // 獲取紅線位置作為分界
+  const redLineBox = redLine.getBoundingClientRect();
+  const redLineTopInVideo = (redLineBox.top - videoBox.top - offsetY) * scaleY;
+  
+  // 裁切下半部：從紅線到紅框底部的完整區域
+  const cropX = Math.max(0, frameLeftInVideo);
+  const cropY = Math.max(0, redLineTopInVideo);
+  const cropW = Math.min(vw - cropX, frameWidthInVideo);
+  const cropH = Math.min(vh - cropY, frameTopInVideo + frameHeightInVideo - redLineTopInVideo);
 
   // 設置 300 DPI 的護照規格輸出尺寸
   canvas.width = 1476;   // 300 DPI 護照寬度
