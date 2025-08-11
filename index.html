@@ -1,34 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-
-<script>
-// 強制跳轉外部瀏覽器 (Line / FB / IG)
-(function(){
-  const ua = navigator.userAgent || navigator.vendor || window.opera;
-  const isLine = ua.includes("Line");
-  const isFB = ua.includes("FB") || ua.includes("FBAN") || ua.includes("FBAV");
-  const isIG = ua.includes("Instagram");
-
-  if (isLine || isFB || isIG) {
-    if (/iPhone|iPad|iPod/i.test(ua)) {
-      window.location.href = "googlechrome://" + window.location.href.replace(/^https?:\/\//, '');
-      setTimeout(() => {
-        alert("⚠️ 請用 Safari 開啟此網址，才能使用相機功能");
-      }, 500);
-    } else if (/Android/i.test(ua)) {
-      window.location.href = "intent://" + window.location.href.replace(/^https?:\/\//, '') +
-        "#Intent;scheme=https;package=com.android.chrome;end";
-      setTimeout(() => {
-        alert("⚠️ 請用 Chrome 開啟此網址，才能使用相機功能");
-      }, 500);
-    }
-  }
-})();
-</script>
-
   <meta charset="UTF-8">
-  <title>護照拍照裁切 - 紅框比例修正</title>
+  <title>護照拍照裁切</title>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -42,17 +16,12 @@
       width: 100%;
       height: 100%;
     }
-    video {
+    video, canvas {
       position: absolute;
       top: 0; left: 0;
       width: 100%;
       height: 100%;
-      object-fit: contain;
-      background: black;
-      z-index: 1;
-    }
-    #canvas, #canvas-buffer {
-      display: none;
+      object-fit: cover;
     }
     #red-frame {
       position: absolute;
@@ -95,12 +64,21 @@
       max-height: 80%;
     }
   </style>
+  <script>
+    // 強制外部瀏覽器開啟
+    document.addEventListener("DOMContentLoaded", function() {
+      const ua = navigator.userAgent || navigator.vendor || window.opera;
+      if (/FBAN|FBAV|Instagram|Line/i.test(ua)) {
+        alert("請用外部瀏覽器開啟此頁面以啟用相機功能");
+        window.location.href = "googlechrome://navigate?url=" + encodeURIComponent(window.location.href);
+      }
+    });
+  </script>
 </head>
 <body>
   <div id="camera-container">
     <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-    <canvas id="canvas-buffer"></canvas>
+    <canvas id="canvas" style="display:none;"></canvas>
     <div id="red-frame"></div>
     <div id="red-line"></div>
     <div id="controls">
@@ -117,37 +95,26 @@
   <script>
     const video = document.getElementById("video");
     const canvas = document.getElementById("canvas");
-    const canvasBuffer = document.getElementById("canvas-buffer");
     const captureBtn = document.getElementById("capture");
     const previewContainer = document.getElementById("preview-container");
     const previewImage = document.getElementById("preview-image");
     const retakeBtn = document.getElementById("retake");
     const saveBtn = document.getElementById("save");
+
     const redFrame = document.getElementById("red-frame");
     const redLine = document.getElementById("red-line");
 
-    function setRedFrameFromRatio(videoRatio) {
+    function setRedFrame() {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      let frameWidth, frameHeight;
-
-      // 計算紅框寬高，符合實際相機比例（1.42:1）
-      if (vw / vh > videoRatio) {
-        frameHeight = vh * 0.8;
-        frameWidth = frameHeight * videoRatio;
-      } else {
-        frameWidth = vw * 0.8;
-        frameHeight = frameWidth / videoRatio;
-      }
-
+      const frameWidth = vw * 5 / 7;
+      const frameHeight = vh * 3 / 5;
       const frameLeft = (vw - frameWidth) / 2;
       const frameTop = (vh - frameHeight) / 2;
-
       redFrame.style.width = frameWidth + "px";
       redFrame.style.height = frameHeight + "px";
       redFrame.style.left = frameLeft + "px";
       redFrame.style.top = frameTop + "px";
-
       redLine.style.left = frameLeft + "px";
       redLine.style.width = frameWidth + "px";
       redLine.style.top = (frameTop + frameHeight / 2 - 1.5) + "px";
@@ -156,14 +123,10 @@
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" }, audio: false
+          video: { facingMode: "environment", width: { ideal: 4000 }, height: { ideal: 3000 } }, 
+          audio: false
         });
         video.srcObject = stream;
-
-        video.onloadedmetadata = () => {
-          const videoRatio = video.videoWidth / video.videoHeight;
-          setRedFrameFromRatio(videoRatio);
-        };
       } catch (err) {
         alert("無法存取相機: " + err);
       }
@@ -172,35 +135,26 @@
     function cropAndPreview() {
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-
-      canvasBuffer.width = vw;
-      canvasBuffer.height = vh;
-      const bufferCtx = canvasBuffer.getContext("2d");
-      bufferCtx.drawImage(video, 0, 0, vw, vh);
-
-      const redBox = redFrame.getBoundingClientRect();
+      const redFrameBox = redFrame.getBoundingClientRect();
       const videoBox = video.getBoundingClientRect();
+      const scaleX = vw / videoBox.width;
+      const scaleY = vh / videoBox.height;
 
-      const displayRatio = videoBox.width / videoBox.height;
-      const videoRatio = vw / vh;
+      const cropX = redFrameBox.left * scaleX;
+      const cropY = (redFrameBox.top + redFrameBox.height / 2) * scaleY;
+      const cropW = redFrameBox.width * scaleX;
+      const cropH = (redFrameBox.height / 2) * scaleY;
 
-      let offsetX = 0, offsetY = 0;
+      // 暫存原始解析度裁切
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = cropW;
+      tempCanvas.height = cropH;
+      tempCanvas.getContext("2d").drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-      if (displayRatio > videoRatio) {
-        offsetX = (videoBox.width - videoBox.height * videoRatio) / 2;
-      } else {
-        offsetY = (videoBox.height - videoBox.width / videoRatio) / 2;
-      }
-
-      const cropX = (redBox.left - videoBox.left - offsetX) * (vw / (videoBox.width - 2 * offsetX));
-      const cropY = (redBox.top - videoBox.top - offsetY + redBox.height / 2) * (vh / (videoBox.height - 2 * offsetY));
-      const cropW = redBox.width * (vw / (videoBox.width - 2 * offsetX));
-      const cropH = redBox.height / 2 * (vh / (videoBox.height - 2 * offsetY));
-
+      // 最終輸出固定 1476x1040
       canvas.width = 1476;
       canvas.height = 1040;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(canvasBuffer, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+      canvas.getContext("2d").drawImage(tempCanvas, 0, 0, 1476, 1040);
 
       const dataURL = canvas.toDataURL("image/bmp");
       previewImage.src = dataURL;
@@ -218,13 +172,9 @@
       previewContainer.style.display = "none";
     };
 
-    window.addEventListener("resize", () => {
-      if (video.videoWidth && video.videoHeight) {
-        setRedFrameFromRatio(video.videoWidth / video.videoHeight);
-      }
-    });
-
+    window.addEventListener("resize", setRedFrame);
     initCamera();
+    setRedFrame();
   </script>
 </body>
 </html>
