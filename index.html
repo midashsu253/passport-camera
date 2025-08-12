@@ -87,20 +87,6 @@ button {
   max-width: 90%;
   max-height: 80%;
 }
-#debug-overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 15;
-}
-#calculated-crop {
-  position: absolute;
-  border: 2px solid lime;
-  background: rgba(0,255,0,0.2);
-  box-sizing: border-box;
-}
 </style>
 </head>
 <body>
@@ -109,12 +95,8 @@ button {
     <canvas id="canvas" style="display:none;"></canvas>
     <div id="red-frame"></div>
     <div id="red-line"></div>
-    <div id="debug-overlay" style="display:none;">
-      <div id="calculated-crop"></div>
-    </div>
     <div id="controls">
       <button id="capture">📸 拍照</button>
-      <button id="debug-toggle">🔍 調試模式</button>
     </div>
     <div id="preview-container">
       <img id="preview-image" />
@@ -128,17 +110,13 @@ button {
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const captureBtn = document.getElementById("capture");
-const debugBtn = document.getElementById("debug-toggle");
 const previewContainer = document.getElementById("preview-container");
 const previewImage = document.getElementById("preview-image");
 const retakeBtn = document.getElementById("retake");
 const saveBtn = document.getElementById("save");
+
 const redFrame = document.getElementById("red-frame");
 const redLine = document.getElementById("red-line");
-const debugOverlay = document.getElementById("debug-overlay");
-const calculatedCrop = document.getElementById("calculated-crop");
-
-let debugMode = false;
 
 function setRedFrame() {
   const vw = window.innerWidth;
@@ -159,198 +137,45 @@ function setRedFrame() {
 async function initCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { 
-        facingMode: "environment",
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30 }
-      }, 
-      audio: false
+      video: { facingMode: "environment" }, audio: false
     });
     video.srcObject = stream;
-    console.log("相機初始化成功");
   } catch (err) {
-    console.error("相機初始化失敗:", err);
     alert("無法存取相機: " + err);
   }
-}
-
-function enhanceImage(ctx, width, height) {
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  
-  const brightness = 10;
-  const contrast = 1.15;
-  
-  const sharpenKernel = [
-    0, -1, 0,
-    -1, 5, -1,
-    0, -1, 0
-  ];
-  
-  const originalData = new Uint8ClampedArray(data);
-  
-  for (let i = 0; i < data.length; i += 4) {
-    for (let j = 0; j < 3; j++) {
-      let pixel = data[i + j];
-      pixel = ((pixel - 128) * contrast) + 128;
-      pixel += brightness;
-      data[i + j] = Math.max(0, Math.min(255, pixel));
-    }
-  }
-  
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      for (let c = 0; c < 3; c++) {
-        let sum = 0;
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const pixelIndex = ((y + ky) * width + (x + kx)) * 4 + c;
-            const kernelIndex = (ky + 1) * 3 + (kx + 1);
-            sum += originalData[pixelIndex] * sharpenKernel[kernelIndex];
-          }
-        }
-        const currentIndex = (y * width + x) * 4 + c;
-        data[currentIndex] = Math.max(0, Math.min(255, sum));
-      }
-    }
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-}
-
-function updateDebugOverlay() {
-  if (!debugMode) {
-    debugOverlay.style.display = 'none';
-    return;
-  }
-  
-  debugOverlay.style.display = 'block';
-  
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  
-  if (vw === 0 || vh === 0) return;
-  
-  const frameBox = redFrame.getBoundingClientRect();
-  const redLineBox = redLine.getBoundingClientRect();
-  const videoRect = video.getBoundingClientRect();
-  const videoAspect = vw / vh;
-  const displayAspect = videoRect.width / videoRect.height;
-  
-  let contentWidth, contentHeight, contentLeft, contentTop;
-  
-  if (videoAspect > displayAspect) {
-    contentHeight = videoRect.height;
-    contentWidth = contentHeight * videoAspect;
-    contentTop = videoRect.top;
-    contentLeft = videoRect.left + (videoRect.width - contentWidth) / 2;
-  } else {
-    contentWidth = videoRect.width;
-    contentHeight = contentWidth / videoAspect;
-    contentLeft = videoRect.left;
-    contentTop = videoRect.top + (videoRect.height - contentHeight) / 2;
-  }
-
-  const scaleX = vw / contentWidth;
-  const scaleY = vh / contentHeight;
-
-  const frameLeftInVideo = (frameBox.left - contentLeft) * scaleX;
-  const frameTopInVideo = (frameBox.top - contentTop) * scaleY;
-  const frameWidthInVideo = frameBox.width * scaleX;
-  const frameHeightInVideo = frameBox.height * scaleY;
-  const redLineTopInVideo = (redLineBox.top - contentTop) * scaleY;
-  
-  const cropX = frameLeftInVideo;
-  const cropY = redLineTopInVideo;
-  const cropW = frameWidthInVideo;
-  const cropH = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
-  
-  const displayCropLeft = cropX / scaleX + contentLeft;
-  const displayCropTop = cropY / scaleY + contentTop;
-  const displayCropWidth = cropW / scaleX;
-  const displayCropHeight = cropH / scaleY;
-  
-  calculatedCrop.style.left = displayCropLeft + 'px';
-  calculatedCrop.style.top = displayCropTop + 'px';
-  calculatedCrop.style.width = displayCropWidth + 'px';
-  calculatedCrop.style.height = displayCropHeight + 'px';
 }
 
 function cropAndPreview() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
-  
-  if (vw === 0 || vh === 0) {
-    console.log('視頻尚未載入完成');
-    return;
-  }
-  
+  const videoBox = video.getBoundingClientRect();
   const frameBox = redFrame.getBoundingClientRect();
-  const redLineBox = redLine.getBoundingClientRect();
-  const videoRect = video.getBoundingClientRect();
+
   const videoAspect = vw / vh;
-  const displayAspect = videoRect.width / videoRect.height;
-  
-  let contentWidth, contentHeight, contentLeft, contentTop;
-  
-  if (videoAspect > displayAspect) {
-    contentHeight = videoRect.height;
-    contentWidth = contentHeight * videoAspect;
-    contentTop = videoRect.top;
-    contentLeft = videoRect.left + (videoRect.width - contentWidth) / 2;
+  const screenAspect = videoBox.width / videoBox.height;
+  let offsetX = 0, offsetY = 0, displayW = videoBox.width, displayH = videoBox.height;
+
+  if (videoAspect > screenAspect) {
+    displayW = videoBox.height * videoAspect;
+    offsetX = (videoBox.width - displayW) / 2;
   } else {
-    contentWidth = videoRect.width;
-    contentHeight = contentWidth / videoAspect;
-    contentLeft = videoRect.left;
-    contentTop = videoRect.top + (videoRect.height - contentHeight) / 2;
+    displayH = videoBox.width / videoAspect;
+    offsetY = (videoBox.height - displayH) / 2;
   }
 
-  const scaleX = vw / contentWidth;
-  const scaleY = vh / contentHeight;
+  const scaleX = vw / displayW;
+  const scaleY = vh / displayH;
 
-  const frameLeftInVideo = (frameBox.left - contentLeft) * scaleX;
-  const frameTopInVideo = (frameBox.top - contentTop) * scaleY;
-  const frameWidthInVideo = frameBox.width * scaleX;
-  const frameHeightInVideo = frameBox.height * scaleY;
-  const redLineTopInVideo = (redLineBox.top - contentTop) * scaleY;
-  
-  const cropX = frameLeftInVideo;
-  const cropY = redLineTopInVideo;
-  const cropW = frameWidthInVideo;
-  const cropH = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
+  const cropX = (frameBox.left - videoBox.left - offsetX) * scaleX;
+  const cropY = (frameBox.top - videoBox.top - offsetY + frameBox.height / 2) * scaleY;
+  const cropW = frameBox.width * scaleX;
+  const cropH = (frameBox.height / 2) * scaleY;
 
-  const finalCropX = Math.max(0, Math.min(vw, cropX));
-  const finalCropY = Math.max(0, Math.min(vh, cropY));
-  const finalCropW = Math.min(vw - finalCropX, Math.max(0, cropW));
-  const finalCropH = Math.min(vh - finalCropY, Math.max(0, cropH));
-
-  // 【關鍵修正】：根據裁切區域的實際比例來設定輸出尺寸
-  const cropAspect = finalCropW / finalCropH;
-  
-  // 設定輸出尺寸，保持裁切區域的原始比例
-  const outputHeight = 1040;
-  const outputWidth = Math.round(outputHeight * cropAspect);
-  
-  canvas.width = outputWidth;
-  canvas.height = outputHeight;
+  canvas.width = 1476;
+  canvas.height = 1040;
   const ctx = canvas.getContext("2d");
-  
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  
-  // 【關鍵】：現在裁切區域會完全填滿 Canvas，不會有縮放
-  ctx.drawImage(video, finalCropX, finalCropY, finalCropW, finalCropH, 0, 0, canvas.width, canvas.height);
-  
-  console.log('修正後的繪製參數:', {
-    裁切區域: `x:${finalCropX.toFixed(1)}, y:${finalCropY.toFixed(1)}, w:${finalCropW.toFixed(1)}, h:${finalCropH.toFixed(1)}`,
-    裁切比例: cropAspect.toFixed(3),
-    輸出尺寸: `${outputWidth}x${outputHeight}`,
-    比例匹配: '裁切區域現在會完全填滿輸出畫布'
-  });
-  
-  enhanceImage(ctx, canvas.width, canvas.height);
-  
+  ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+
   const dataURL = canvas.toDataURL("image/bmp");
   previewImage.src = dataURL;
   previewContainer.style.display = "flex";
@@ -358,11 +183,6 @@ function cropAndPreview() {
 }
 
 captureBtn.onclick = () => cropAndPreview();
-debugBtn.onclick = () => {
-  debugMode = !debugMode;
-  debugBtn.textContent = debugMode ? '🔍 關閉調試' : '🔍 調試模式';
-  updateDebugOverlay();
-};
 retakeBtn.onclick = () => previewContainer.style.display = "none";
 saveBtn.onclick = () => {
   const link = document.createElement("a");
@@ -372,20 +192,9 @@ saveBtn.onclick = () => {
   previewContainer.style.display = "none";
 };
 
-window.addEventListener("resize", () => {
-  setRedFrame();
-  updateDebugOverlay();
-});
-
-video.addEventListener('loadedmetadata', updateDebugOverlay);
-
-console.log("開始初始化相機...");
+window.addEventListener("resize", setRedFrame);
 initCamera();
 setRedFrame();
-
-setTimeout(() => {
-  updateDebugOverlay();
-}, 1000);
 </script>
 </body>
 </html>
