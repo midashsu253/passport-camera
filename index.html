@@ -115,7 +115,22 @@
       max-height: 80%;
     }
   </style>
-</head>
+<style>
+/* === Button size boost (no other changes) === */
+#controls button,
+#preview-container button {
+  font-size: 20px;           /* bigger text */
+  padding: 16px 26px;        /* larger hit area */
+  min-width: 180px;
+  min-height: 56px;          /* >= 44pt on iOS */
+  border-radius: 14px;
+}
+
+@media (min-width: 768px) {
+  #controls button { font-size: 22px; padding: 18px 30px; min-width: 200px; min-height: 60px; }
+  #preview-container button { font-size: 20px; padding: 16px 26px; min-width: 180px; min-height: 56px; }
+}
+</style></head>
 <body>
 <div id="camera-container">
 <video autoplay="" id="video" playsinline=""></video>
