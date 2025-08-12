@@ -97,6 +97,10 @@ button {
     <div id="red-line"></div>
     <div id="controls">
       <button id="capture">📸 拍照</button>
+      <button id="debug-toggle">🔍 調試模式</button>
+    </div>
+    <div id="debug-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15;">
+      <div id="calculated-crop" style="position:absolute; border:2px solid lime; background:rgba(0,255,0,0.2); box-sizing:border-box;"></div>
     </div>
     <div id="preview-container">
       <img id="preview-image" />
@@ -110,12 +114,17 @@ button {
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const captureBtn = document.getElementById("capture");
+const debugBtn = document.getElementById("debug-toggle");
 const previewContainer = document.getElementById("preview-container");
 const previewImage = document.getElementById("preview-image");
 const retakeBtn = document.getElementById("retake");
 const saveBtn = document.getElementById("save");
 const redFrame = document.getElementById("red-frame");
 const redLine = document.getElementById("red-line");
+const debugOverlay = document.getElementById("debug-overlay");
+const calculatedCrop = document.getElementById("calculated-crop");
+
+let debugMode = false;
 
 function setRedFrame() {
   const vw = window.innerWidth;
@@ -205,7 +214,66 @@ function enhanceImage(ctx, width, height) {
   ctx.putImageData(imageData, 0, 0);
 }
 
-function cropAndPreview() {
+function updateDebugOverlay() {
+  if (!debugMode) {
+    debugOverlay.style.display = 'none';
+    return;
+  }
+  
+  debugOverlay.style.display = 'block';
+  
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  
+  if (vw === 0 || vh === 0) return;
+  
+  const frameBox = redFrame.getBoundingClientRect();
+  const redLineBox = redLine.getBoundingClientRect();
+  const videoRect = video.getBoundingClientRect();
+  const videoAspect = vw / vh;
+  const displayAspect = videoRect.width / videoRect.height;
+  
+  let contentWidth, contentHeight, contentLeft, contentTop;
+  
+  if (videoAspect > displayAspect) {
+    contentHeight = videoRect.height;
+    contentWidth = contentHeight * videoAspect;
+    contentTop = videoRect.top;
+    contentLeft = videoRect.left + (videoRect.width - contentWidth) / 2;
+  } else {
+    contentWidth = videoRect.width;
+    contentHeight = contentWidth / videoAspect;
+    contentLeft = videoRect.left;
+    contentTop = videoRect.top + (videoRect.height - contentHeight) / 2;
+  }
+
+  const scaleX = vw / contentWidth;
+  const scaleY = vh / contentHeight;
+
+  // 反向計算：從視頻像素座標轉回螢幕座標
+  const frameLeftInVideo = (frameBox.left - contentLeft) * scaleX;
+  const frameTopInVideo = (frameBox.top - contentTop) * scaleY;
+  const frameWidthInVideo = frameBox.width * scaleX;
+  const frameHeightInVideo = frameBox.height * scaleY;
+  const redLineTopInVideo = (redLineBox.top - contentTop) * scaleY;
+  
+  // 計算下半部區域
+  const cropX = frameLeftInVideo;
+  const cropY = redLineTopInVideo;
+  const cropW = frameWidthInVideo;
+  const cropH = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
+  
+  // 轉換回螢幕座標顯示
+  const displayCropLeft = cropX / scaleX + contentLeft;
+  const displayCropTop = cropY / scaleY + contentTop;
+  const displayCropWidth = cropW / scaleX;
+  const displayCropHeight = cropH / scaleY;
+  
+  calculatedCrop.style.left = displayCropLeft + 'px';
+  calculatedCrop.style.top = displayCropTop + 'px';
+  calculatedCrop.style.width = displayCropWidth + 'px';
+  calculatedCrop.style.height = displayCropHeight + 'px';
+}
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   
@@ -312,16 +380,27 @@ function cropAndPreview() {
 }
 
 captureBtn.onclick = () => cropAndPreview();
+debugBtn.onclick = () => {
+  debugMode = !debugMode;
+  debugBtn.textContent = debugMode ? '🔍 關閉調試' : '🔍 調試模式';
+  updateDebugOverlay();
+};
 retakeBtn.onclick = () => previewContainer.style.display = "none";
 saveBtn.onclick = () => {
   const link = document.createElement("a");
   link.href = saveBtn.dataset.url;
-  link.download = "passport.bmp"; // BMP 格式避免壓縮失真
+  link.download = "passport.bmp";
   link.click();
   previewContainer.style.display = "none";
 };
 
-window.addEventListener("resize", setRedFrame);
+window.addEventListener("resize", () => {
+  setRedFrame();
+  updateDebugOverlay();
+});
+
+// 監聽視頻載入完成
+video.addEventListener('loadedmetadata', updateDebugOverlay);
 
 // 確保相機初始化
 console.log("開始初始化相機...");
