@@ -238,44 +238,48 @@ function cropAndPreview() {
   // 計算紅線在視頻座標系中的位置
   const redLineTopInVideo = (redLineBox.top - videoBox.top - offsetY) * scaleY;
   
-  // 【關鍵修正】：由於拍攝的是護照下半頁，需要按照標準護照比例來計算輸出尺寸
-  // 標準護照比例是 125mm x 88mm（約 1.42:1）
-  const passportAspect = 125 / 88;
-  
-  // 計算下半部的實際高度（從紅線到紅框底部）
-  const lowerHalfHeightInVideo = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
-  
-  // 根據護照比例計算應該的寬度
-  const expectedWidthInVideo = lowerHalfHeightInVideo * passportAspect;
-  
-  // 計算裁切區域（置中對齊）
-  const cropX = Math.max(0, frameLeftInVideo + (frameWidthInVideo - expectedWidthInVideo) / 2);
+  // 【關鍵修正】：直接使用下半部紅框區域，讓護照填滿整個輸出畫布
+  // 計算下半部區域（從紅線到紅框底部）
+  const cropX = Math.max(0, frameLeftInVideo);
   const cropY = Math.max(0, redLineTopInVideo);
-  const cropW = Math.min(vw - cropX, expectedWidthInVideo);
-  const cropH = Math.min(vh - cropY, lowerHalfHeightInVideo);
+  const cropW = Math.min(vw - cropX, frameWidthInVideo);
+  const cropH = Math.min(vh - cropY, frameTopInVideo + frameHeightInVideo - redLineTopInVideo);
 
-  // 設置 300 DPI 的護照規格輸出尺寸
-  canvas.width = 1476;   // 300 DPI 護照寬度
-  canvas.height = 1040;  // 300 DPI 護照高度
+  // 【重要】：根據裁切區域的實際比例來設定輸出尺寸，而不是固定的護照尺寸
+  const cropAspect = cropW / cropH;
+  
+  // 設定高解析度輸出，但保持裁切區域的原始比例
+  const outputHeight = 1040;  // 固定高度
+  const outputWidth = Math.round(outputHeight * cropAspect);  // 根據實際比例計算寬度
+  
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
   const ctx = canvas.getContext("2d");
   
   // 設置高品質渲染
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
-  // 繪製影像
+  // 直接按原始比例繪製，不強制變形為護照比例
   ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
   
   // 調試信息
   console.log('修正後的裁切參數:', {
-    原始紅框寬度: frameWidthInVideo.toFixed(2),
-    計算出的護照寬度: expectedWidthInVideo.toFixed(2),
-    護照比例: passportAspect.toFixed(3),
-    cropX: cropX.toFixed(2),
-    cropY: cropY.toFixed(2), 
-    cropW: cropW.toFixed(2),
-    cropH: cropH.toFixed(2),
-    下半部高度: lowerHalfHeightInVideo.toFixed(2)
+    裁切區域: {
+      cropX: cropX.toFixed(2),
+      cropY: cropY.toFixed(2), 
+      cropW: cropW.toFixed(2),
+      cropH: cropH.toFixed(2),
+    },
+    裁切比例: cropAspect.toFixed(3),
+    輸出尺寸: {
+      width: outputWidth,
+      height: outputHeight
+    },
+    紅框尺寸: {
+      width: frameWidthInVideo.toFixed(2),
+      height: frameHeightInVideo.toFixed(2)
+    }
   });
   
   // 應用影像品質增強
