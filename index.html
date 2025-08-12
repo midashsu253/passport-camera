@@ -116,19 +116,27 @@
     }
   </style>
 <style>
-/* === Button size boost (no other changes) === */
-#controls button,
-#preview-container button {
-  font-size: 20px;           /* bigger text */
-  padding: 16px 26px;        /* larger hit area */
-  min-width: 180px;
-  min-height: 56px;          /* >= 44pt on iOS */
-  border-radius: 14px;
+/* === Bigger, responsive buttons (no other behavior changes) === */
+html { -webkit-text-size-adjust: 100%; }
+#controls { 
+  position: absolute; left: 0; right: 0; bottom: 0; 
+  text-align: center; z-index: 20;
+  padding: max(12px, 1.8vh) 16px calc(env(safe-area-inset-bottom) + max(12px, 1.8vh));
 }
-
-@media (min-width: 768px) {
-  #controls button { font-size: 22px; padding: 18px 30px; min-width: 200px; min-height: 60px; }
-  #preview-container button { font-size: 20px; padding: 16px 26px; min-width: 180px; min-height: 56px; }
+#controls button {
+  font-size: clamp(18px, 4.8vw, 28px) !important;
+  padding: max(12px, 1.6vh) max(20px, 4.8vw) !important;
+  min-width: min(80vw, 420px) !important;
+  min-height: max(56px, 6.2vh) !important;   /* >=44pt on iOS */
+  border-radius: 14px !important;
+}
+#preview-container button {
+  font-size: clamp(18px, 4.2vw, 24px) !important;
+  padding: max(12px, 1.4vh) max(20px, 4.0vw) !important;
+  min-width: min(42vw, 260px) !important;
+  min-height: max(54px, 5.6vh) !important;
+  border-radius: 12px !important;
+  margin: 8px;
 }
 </style></head>
 <body>
