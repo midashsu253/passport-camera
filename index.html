@@ -208,84 +208,103 @@ function enhanceImage(ctx, width, height) {
 function cropAndPreview() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
-  const videoBox = video.getBoundingClientRect();
+  
+  // 等待視頻完全載入
+  if (vw === 0 || vh === 0) {
+    console.log('視頻尚未載入完成');
+    return;
+  }
+  
   const frameBox = redFrame.getBoundingClientRect();
   const redLineBox = redLine.getBoundingClientRect();
 
-  // 計算視頻在螢幕上的實際顯示區域（考慮 object-fit: contain）
+  // 重新計算視頻實際顯示區域 - 直接基於視頻元素
+  const videoRect = video.getBoundingClientRect();
   const videoAspect = vw / vh;
-  const screenAspect = videoBox.width / videoBox.height;
-  let offsetX = 0, offsetY = 0, displayW = videoBox.width, displayH = videoBox.height;
-
-  if (videoAspect > screenAspect) {
-    displayW = videoBox.height * videoAspect;
-    offsetX = (videoBox.width - displayW) / 2;
+  const displayAspect = videoRect.width / videoRect.height;
+  
+  // 計算視頻內容在顯示區域中的實際尺寸和位置
+  let contentWidth, contentHeight, contentLeft, contentTop;
+  
+  if (videoAspect > displayAspect) {
+    // 視頻較寬，高度填滿，寬度會有裁切或縮放
+    contentHeight = videoRect.height;
+    contentWidth = contentHeight * videoAspect;
+    contentTop = videoRect.top;
+    contentLeft = videoRect.left + (videoRect.width - contentWidth) / 2;
   } else {
-    displayH = videoBox.width / videoAspect;
-    offsetY = (videoBox.height - displayH) / 2;
+    // 視頻較高，寬度填滿，高度會有裁切或縮放  
+    contentWidth = videoRect.width;
+    contentHeight = contentWidth / videoAspect;
+    contentLeft = videoRect.left;
+    contentTop = videoRect.top + (videoRect.height - contentHeight) / 2;
   }
 
-  // 計算從螢幕座標到視頻座標的轉換比例
-  const scaleX = vw / displayW;
-  const scaleY = vh / displayH;
+  // 計算轉換比例：從顯示像素到視頻像素
+  const scaleX = vw / contentWidth;
+  const scaleY = vh / contentHeight;
 
-  // 計算紅框在視頻座標系中的位置
-  const frameLeftInVideo = (frameBox.left - videoBox.left - offsetX) * scaleX;
-  const frameTopInVideo = (frameBox.top - videoBox.top - offsetY) * scaleY;
+  // 轉換紅框座標到視頻像素座標
+  const frameLeftInVideo = (frameBox.left - contentLeft) * scaleX;
+  const frameTopInVideo = (frameBox.top - contentTop) * scaleY;
   const frameWidthInVideo = frameBox.width * scaleX;
   const frameHeightInVideo = frameBox.height * scaleY;
   
-  // 計算紅線在視頻座標系中的位置
-  const redLineTopInVideo = (redLineBox.top - videoBox.top - offsetY) * scaleY;
+  // 轉換紅線座標到視頻像素座標
+  const redLineTopInVideo = (redLineBox.top - contentTop) * scaleY;
   
-  // 【關鍵修正】：直接使用下半部紅框區域，讓護照填滿整個輸出畫布
-  // 計算下半部區域（從紅線到紅框底部）
-  const cropX = Math.max(0, frameLeftInVideo);
-  const cropY = Math.max(0, redLineTopInVideo);
-  const cropW = Math.min(vw - cropX, frameWidthInVideo);
-  const cropH = Math.min(vh - cropY, frameTopInVideo + frameHeightInVideo - redLineTopInVideo);
+  // 精確計算下半部裁切區域
+  const cropX = frameLeftInVideo;
+  const cropY = redLineTopInVideo;
+  const cropW = frameWidthInVideo;
+  const cropH = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
 
-  // 【重要】：根據裁切區域的實際比例來設定輸出尺寸，而不是固定的護照尺寸
-  const cropAspect = cropW / cropH;
-  
-  // 設定高解析度輸出，但保持裁切區域的原始比例
-  const outputHeight = 1040;  // 固定高度
-  const outputWidth = Math.round(outputHeight * cropAspect);  // 根據實際比例計算寬度
-  
-  canvas.width = outputWidth;
-  canvas.height = outputHeight;
+  // 邊界檢查，確保不超出視頻範圍
+  const finalCropX = Math.max(0, Math.min(vw, cropX));
+  const finalCropY = Math.max(0, Math.min(vh, cropY));
+  const finalCropW = Math.min(vw - finalCropX, Math.max(0, cropW));
+  const finalCropH = Math.min(vh - finalCropY, Math.max(0, cropH));
+
+  // 設定標準護照輸出尺寸
+  canvas.width = 1476;
+  canvas.height = 1040;
   const ctx = canvas.getContext("2d");
   
-  // 設置高品質渲染
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
-  // 直接按原始比例繪製，不強制變形為護照比例
-  ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  // 繪製裁切區域到畫布
+  ctx.drawImage(video, finalCropX, finalCropY, finalCropW, finalCropH, 0, 0, canvas.width, canvas.height);
   
-  // 調試信息
-  console.log('修正後的裁切參數:', {
-    裁切區域: {
-      cropX: cropX.toFixed(2),
-      cropY: cropY.toFixed(2), 
-      cropW: cropW.toFixed(2),
-      cropH: cropH.toFixed(2),
+  // 詳細調試信息
+  console.log('精確座標計算:', {
+    視頻原始尺寸: { width: vw, height: vh, aspect: videoAspect.toFixed(3) },
+    視頻元素顯示: { 
+      left: videoRect.left.toFixed(2), 
+      top: videoRect.top.toFixed(2), 
+      width: videoRect.width.toFixed(2), 
+      height: videoRect.height.toFixed(2),
+      aspect: displayAspect.toFixed(3)
     },
-    裁切比例: cropAspect.toFixed(3),
-    輸出尺寸: {
-      width: outputWidth,
-      height: outputHeight
+    視頻內容實際區域: {
+      left: contentLeft.toFixed(2),
+      top: contentTop.toFixed(2), 
+      width: contentWidth.toFixed(2),
+      height: contentHeight.toFixed(2)
     },
-    紅框尺寸: {
-      width: frameWidthInVideo.toFixed(2),
-      height: frameHeightInVideo.toFixed(2)
-    }
+    轉換比例: { scaleX: scaleX.toFixed(4), scaleY: scaleY.toFixed(4) },
+    紅框: {
+      螢幕位置: `${frameBox.left.toFixed(1)}, ${frameBox.top.toFixed(1)}, ${frameBox.width.toFixed(1)}x${frameBox.height.toFixed(1)}`,
+      視頻座標: `${frameLeftInVideo.toFixed(1)}, ${frameTopInVideo.toFixed(1)}, ${frameWidthInVideo.toFixed(1)}x${frameHeightInVideo.toFixed(1)}`
+    },
+    紅線視頻座標: redLineTopInVideo.toFixed(1),
+    原始裁切: `x:${cropX.toFixed(1)}, y:${cropY.toFixed(1)}, w:${cropW.toFixed(1)}, h:${cropH.toFixed(1)}`,
+    最終裁切: `x:${finalCropX.toFixed(1)}, y:${finalCropY.toFixed(1)}, w:${finalCropW.toFixed(1)}, h:${finalCropH.toFixed(1)}`,
+    輸出: `${canvas.width}x${canvas.height}`
   });
   
-  // 應用影像品質增強
   enhanceImage(ctx, canvas.width, canvas.height);
-
-  // 保存為無損的 BMP 格式，避免 Line 傳輸時的二次壓縮失真
+  
   const dataURL = canvas.toDataURL("image/bmp");
   previewImage.src = dataURL;
   previewContainer.style.display = "flex";
