@@ -87,6 +87,20 @@ button {
   max-width: 90%;
   max-height: 80%;
 }
+#debug-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 15;
+}
+#calculated-crop {
+  position: absolute;
+  border: 2px solid lime;
+  background: rgba(0,255,0,0.2);
+  box-sizing: border-box;
+}
 </style>
 </head>
 <body>
@@ -95,12 +109,12 @@ button {
     <canvas id="canvas" style="display:none;"></canvas>
     <div id="red-frame"></div>
     <div id="red-line"></div>
+    <div id="debug-overlay" style="display:none;">
+      <div id="calculated-crop"></div>
+    </div>
     <div id="controls">
       <button id="capture">📸 拍照</button>
       <button id="debug-toggle">🔍 調試模式</button>
-    </div>
-    <div id="debug-overlay" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:15;">
-      <div id="calculated-crop" style="position:absolute; border:2px solid lime; background:rgba(0,255,0,0.2); box-sizing:border-box;"></div>
     </div>
     <div id="preview-container">
       <img id="preview-image" />
@@ -161,42 +175,33 @@ async function initCamera() {
   }
 }
 
-// 影像品質增強功能
 function enhanceImage(ctx, width, height) {
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
   
-  // 1. 亮度和對比度調整
-  const brightness = 10; // 增加亮度
-  const contrast = 1.15; // 增加對比度
+  const brightness = 10;
+  const contrast = 1.15;
   
-  // 2. 銳化濾鏡核心
   const sharpenKernel = [
     0, -1, 0,
     -1, 5, -1,
     0, -1, 0
   ];
   
-  // 創建副本用於銳化處理
   const originalData = new Uint8ClampedArray(data);
   
   for (let i = 0; i < data.length; i += 4) {
-    // 調整亮度和對比度
-    for (let j = 0; j < 3; j++) { // RGB通道
+    for (let j = 0; j < 3; j++) {
       let pixel = data[i + j];
-      // 對比度調整
       pixel = ((pixel - 128) * contrast) + 128;
-      // 亮度調整
       pixel += brightness;
-      // 確保值在有效範圍內
       data[i + j] = Math.max(0, Math.min(255, pixel));
     }
   }
   
-  // 應用銳化濾鏡
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      for (let c = 0; c < 3; c++) { // RGB通道
+      for (let c = 0; c < 3; c++) {
         let sum = 0;
         for (let ky = -1; ky <= 1; ky++) {
           for (let kx = -1; kx <= 1; kx++) {
@@ -250,20 +255,17 @@ function updateDebugOverlay() {
   const scaleX = vw / contentWidth;
   const scaleY = vh / contentHeight;
 
-  // 反向計算：從視頻像素座標轉回螢幕座標
   const frameLeftInVideo = (frameBox.left - contentLeft) * scaleX;
   const frameTopInVideo = (frameBox.top - contentTop) * scaleY;
   const frameWidthInVideo = frameBox.width * scaleX;
   const frameHeightInVideo = frameBox.height * scaleY;
   const redLineTopInVideo = (redLineBox.top - contentTop) * scaleY;
   
-  // 計算下半部區域
   const cropX = frameLeftInVideo;
   const cropY = redLineTopInVideo;
   const cropW = frameWidthInVideo;
   const cropH = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
   
-  // 轉換回螢幕座標顯示
   const displayCropLeft = cropX / scaleX + contentLeft;
   const displayCropTop = cropY / scaleY + contentTop;
   const displayCropWidth = cropW / scaleX;
@@ -274,10 +276,11 @@ function updateDebugOverlay() {
   calculatedCrop.style.width = displayCropWidth + 'px';
   calculatedCrop.style.height = displayCropHeight + 'px';
 }
+
+function cropAndPreview() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   
-  // 等待視頻完全載入
   if (vw === 0 || vh === 0) {
     console.log('視頻尚未載入完成');
     return;
@@ -285,55 +288,43 @@ function updateDebugOverlay() {
   
   const frameBox = redFrame.getBoundingClientRect();
   const redLineBox = redLine.getBoundingClientRect();
-
-  // 重新計算視頻實際顯示區域 - 直接基於視頻元素
   const videoRect = video.getBoundingClientRect();
   const videoAspect = vw / vh;
   const displayAspect = videoRect.width / videoRect.height;
   
-  // 計算視頻內容在顯示區域中的實際尺寸和位置
   let contentWidth, contentHeight, contentLeft, contentTop;
   
   if (videoAspect > displayAspect) {
-    // 視頻較寬，高度填滿，寬度會有裁切或縮放
     contentHeight = videoRect.height;
     contentWidth = contentHeight * videoAspect;
     contentTop = videoRect.top;
     contentLeft = videoRect.left + (videoRect.width - contentWidth) / 2;
   } else {
-    // 視頻較高，寬度填滿，高度會有裁切或縮放  
     contentWidth = videoRect.width;
     contentHeight = contentWidth / videoAspect;
     contentLeft = videoRect.left;
     contentTop = videoRect.top + (videoRect.height - contentHeight) / 2;
   }
 
-  // 計算轉換比例：從顯示像素到視頻像素
   const scaleX = vw / contentWidth;
   const scaleY = vh / contentHeight;
 
-  // 轉換紅框座標到視頻像素座標
   const frameLeftInVideo = (frameBox.left - contentLeft) * scaleX;
   const frameTopInVideo = (frameBox.top - contentTop) * scaleY;
   const frameWidthInVideo = frameBox.width * scaleX;
   const frameHeightInVideo = frameBox.height * scaleY;
-  
-  // 轉換紅線座標到視頻像素座標
   const redLineTopInVideo = (redLineBox.top - contentTop) * scaleY;
   
-  // 精確計算下半部裁切區域
   const cropX = frameLeftInVideo;
   const cropY = redLineTopInVideo;
   const cropW = frameWidthInVideo;
   const cropH = frameTopInVideo + frameHeightInVideo - redLineTopInVideo;
 
-  // 邊界檢查，確保不超出視頻範圍
   const finalCropX = Math.max(0, Math.min(vw, cropX));
   const finalCropY = Math.max(0, Math.min(vh, cropY));
   const finalCropW = Math.min(vw - finalCropX, Math.max(0, cropW));
   const finalCropH = Math.min(vh - finalCropY, Math.max(0, cropH));
 
-  // 設定標準護照輸出尺寸
   canvas.width = 1476;
   canvas.height = 1040;
   const ctx = canvas.getContext("2d");
@@ -341,10 +332,8 @@ function updateDebugOverlay() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
-  // 繪製裁切區域到畫布
   ctx.drawImage(video, finalCropX, finalCropY, finalCropW, finalCropH, 0, 0, canvas.width, canvas.height);
   
-  // 詳細調試信息
   console.log('精確座標計算:', {
     視頻原始尺寸: { width: vw, height: vh, aspect: videoAspect.toFixed(3) },
     視頻元素顯示: { 
@@ -365,8 +354,6 @@ function updateDebugOverlay() {
       螢幕位置: `${frameBox.left.toFixed(1)}, ${frameBox.top.toFixed(1)}, ${frameBox.width.toFixed(1)}x${frameBox.height.toFixed(1)}`,
       視頻座標: `${frameLeftInVideo.toFixed(1)}, ${frameTopInVideo.toFixed(1)}, ${frameWidthInVideo.toFixed(1)}x${frameHeightInVideo.toFixed(1)}`
     },
-    紅線視頻座標: redLineTopInVideo.toFixed(1),
-    原始裁切: `x:${cropX.toFixed(1)}, y:${cropY.toFixed(1)}, w:${cropW.toFixed(1)}, h:${cropH.toFixed(1)}`,
     最終裁切: `x:${finalCropX.toFixed(1)}, y:${finalCropY.toFixed(1)}, w:${finalCropW.toFixed(1)}, h:${finalCropH.toFixed(1)}`,
     輸出: `${canvas.width}x${canvas.height}`
   });
@@ -399,15 +386,12 @@ window.addEventListener("resize", () => {
   updateDebugOverlay();
 });
 
-// 監聽視頻載入完成
 video.addEventListener('loadedmetadata', updateDebugOverlay);
 
-// 確保相機初始化
 console.log("開始初始化相機...");
 initCamera();
 setRedFrame();
 
-// 初始化調試模式
 setTimeout(() => {
   updateDebugOverlay();
 }, 1000);
