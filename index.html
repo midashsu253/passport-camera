@@ -406,6 +406,11 @@ video.addEventListener('loadedmetadata', updateDebugOverlay);
 console.log("開始初始化相機...");
 initCamera();
 setRedFrame();
+
+// 初始化調試模式
+setTimeout(() => {
+  updateDebugOverlay();
+}, 1000);
 </script>
 </body>
 </html>
