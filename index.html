@@ -325,37 +325,28 @@ function cropAndPreview() {
   const finalCropW = Math.min(vw - finalCropX, Math.max(0, cropW));
   const finalCropH = Math.min(vh - finalCropY, Math.max(0, cropH));
 
-  canvas.width = 1476;
-  canvas.height = 1040;
+  // 【關鍵修正】：根據裁切區域的實際比例來設定輸出尺寸
+  const cropAspect = finalCropW / finalCropH;
+  
+  // 設定輸出尺寸，保持裁切區域的原始比例
+  const outputHeight = 1040;
+  const outputWidth = Math.round(outputHeight * cropAspect);
+  
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
   const ctx = canvas.getContext("2d");
   
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
+  // 【關鍵】：現在裁切區域會完全填滿 Canvas，不會有縮放
   ctx.drawImage(video, finalCropX, finalCropY, finalCropW, finalCropH, 0, 0, canvas.width, canvas.height);
   
-  console.log('精確座標計算:', {
-    視頻原始尺寸: { width: vw, height: vh, aspect: videoAspect.toFixed(3) },
-    視頻元素顯示: { 
-      left: videoRect.left.toFixed(2), 
-      top: videoRect.top.toFixed(2), 
-      width: videoRect.width.toFixed(2), 
-      height: videoRect.height.toFixed(2),
-      aspect: displayAspect.toFixed(3)
-    },
-    視頻內容實際區域: {
-      left: contentLeft.toFixed(2),
-      top: contentTop.toFixed(2), 
-      width: contentWidth.toFixed(2),
-      height: contentHeight.toFixed(2)
-    },
-    轉換比例: { scaleX: scaleX.toFixed(4), scaleY: scaleY.toFixed(4) },
-    紅框: {
-      螢幕位置: `${frameBox.left.toFixed(1)}, ${frameBox.top.toFixed(1)}, ${frameBox.width.toFixed(1)}x${frameBox.height.toFixed(1)}`,
-      視頻座標: `${frameLeftInVideo.toFixed(1)}, ${frameTopInVideo.toFixed(1)}, ${frameWidthInVideo.toFixed(1)}x${frameHeightInVideo.toFixed(1)}`
-    },
-    最終裁切: `x:${finalCropX.toFixed(1)}, y:${finalCropY.toFixed(1)}, w:${finalCropW.toFixed(1)}, h:${finalCropH.toFixed(1)}`,
-    輸出: `${canvas.width}x${canvas.height}`
+  console.log('修正後的繪製參數:', {
+    裁切區域: `x:${finalCropX.toFixed(1)}, y:${finalCropY.toFixed(1)}, w:${finalCropW.toFixed(1)}, h:${finalCropH.toFixed(1)}`,
+    裁切比例: cropAspect.toFixed(3),
+    輸出尺寸: `${outputWidth}x${outputHeight}`,
+    比例匹配: '裁切區域現在會完全填滿輸出畫布'
   });
   
   enhanceImage(ctx, canvas.width, canvas.height);
