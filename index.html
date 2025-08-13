@@ -2,87 +2,38 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8"/>
-<title>護照拍照裁切 - 紅框比例修正</title>
+<title>護照拍照裁切 - 固定比例紅框</title>
 <style>
-    html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      background: black;
-      overflow: hidden;
-      font-family: sans-serif;
-    }
+    html, body { margin:0; padding:0; width:100%; height:100%; background:black; overflow:hidden; font-family:sans-serif; }
     #camera-container { position:fixed; inset:0; }
-    video {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      background: black;
-      z-index: 1;
-    }
-    #canvas, #canvas-buffer { display: none; }
-    #red-frame {
-      position: absolute;
-      border: 3px solid red;
-      box-sizing: border-box;
-      z-index: 10;
-    }
-    #red-line {
-      position: absolute;
-      height: 3px;
-      background: red;
-      z-index: 11;
-    }
-    #controls {
-      position: absolute;
-      bottom: 10px;
-      width: 100%;
-      text-align: center;
-      z-index: 20;
-    }
-    button {
-      padding: 10px 20px;
-      margin: 10px;
-      font-size: 16px;
-    }
-    #preview-container {
-      display: none;
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      background: black;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      z-index: 30;
-    }
-    #preview-container img {
-      max-width: 90%;
-      max-height: 80%;
-    }
+    video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:black; z-index:1; }
+    #canvas, #canvas-buffer { display:none; }
+    #red-frame { position:absolute; border:3px solid red; box-sizing:border-box; z-index:10; }
+    #red-line { position:absolute; height:3px; background:red; z-index:11; }
+    #controls { position:absolute; bottom:10px; width:100%; text-align:center; z-index:20; }
+    button { padding:10px 20px; margin:10px; font-size:16px; }
+    #preview-container { display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:black; justify-content:center; align-items:center; flex-direction:column; z-index:30; }
+    #preview-container img { max-width:90%; max-height:80%; }
 </style>
 <style>
 #controls { 
-  position: absolute; left: 0; right: 0; bottom: 0; 
-  text-align: center; z-index: 20;
-  padding: max(12px, 1.8vh) 16px calc(env(safe-area-inset-bottom) + max(12px, 1.8vh));
+  position:absolute; left:0; right:0; bottom:0; text-align:center; z-index:20;
+  padding:max(12px,1.8vh) 16px calc(env(safe-area-inset-bottom) + max(12px,1.8vh));
 }
 #controls button {
-  font-size: clamp(18px, 4.8vw, 28px) !important;
-  padding: max(12px, 1.6vh) max(20px, 4.8vw) !important;
-  min-width: min(80vw, 420px) !important;
-  min-height: max(56px, 6.2vh) !important;
-  border-radius: 14px !important;
+  font-size:clamp(18px,4.8vw,28px) !important;
+  padding:max(12px,1.6vh) max(20px,4.8vw) !important;
+  min-width:min(80vw,420px) !important;
+  min-height:max(56px,6.2vh) !important;
+  border-radius:14px !important;
 }
 #preview-container button {
-  font-size: clamp(18px, 4.2vw, 24px) !important;
-  padding: max(12px, 1.4vh) max(20px, 4.0vw) !important;
-  min-width: min(42vw, 260px) !important;
-  min-height: max(54px, 5.6vh) !important;
-  border-radius: 12px !important;
-  margin: 8px;
+  font-size:clamp(18px,4.2vw,24px) !important;
+  padding:max(12px,1.4vh) max(20px,4.0vw) !important;
+  min-width:min(42vw,260px) !important;
+  min-height:max(54px,5.6vh) !important;
+  border-radius:12px !important;
+  margin:8px;
 }
 </style>
 </head>
@@ -117,16 +68,18 @@ const saveBtn = document.getElementById("save");
 const redFrame = document.getElementById("red-frame");
 const redLine = document.getElementById("red-line");
 
+// 固定紅框比例為護照 1.42:1
 function setRedFrameFromRatio(videoRatio) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   let frameWidth, frameHeight;
-  if (vw / vh > videoRatio) {
+  const fixedRatio = 1.42; // 固定比例
+  if (vw / vh > fixedRatio) {
     frameHeight = vh * 0.8;
-    frameWidth = frameHeight * videoRatio;
+    frameWidth = frameHeight * fixedRatio;
   } else {
     frameWidth = vw * 0.8;
-    frameHeight = frameWidth / videoRatio;
+    frameHeight = frameWidth / fixedRatio;
   }
   const frameLeft = (vw - frameWidth) / 2;
   const frameTop = (vh - frameHeight) / 2;
@@ -151,10 +104,43 @@ async function initCamera() {
       audio: false
     });
     video.srcObject = stream;
+
+    // 點擊手動對焦 + 對焦提示圈
+    video.addEventListener("click", async (e) => {
+      const focusRing = document.createElement("div");
+      focusRing.style.position = "absolute";
+      focusRing.style.border = "2px solid yellow";
+      focusRing.style.borderRadius = "50%";
+      focusRing.style.width = "80px";
+      focusRing.style.height = "80px";
+      focusRing.style.pointerEvents = "none";
+      focusRing.style.left = (e.clientX - 40) + "px";
+      focusRing.style.top = (e.clientY - 40) + "px";
+      focusRing.style.zIndex = 999;
+      focusRing.style.transition = "transform 0.5s ease-out, opacity 0.5s ease-out";
+      document.body.appendChild(focusRing);
+      setTimeout(() => {
+        focusRing.style.transform = "scale(0.5)";
+        focusRing.style.opacity = "0";
+      }, 10);
+      setTimeout(() => focusRing.remove(), 500);
+
+      const track = video.srcObject?.getVideoTracks?.()[0];
+      if (!track) return;
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: "manual" }] });
+        setTimeout(() => {
+          track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+        }, 500);
+      } catch (err) {
+        console.warn("裝置不支援手動對焦:", err);
+      }
+    });
+
     video.onloadedmetadata = () => {
       let tries = 0;
       const t = setInterval(() => {
-        setRedFrameFromRatio(video.videoWidth / video.videoHeight);
+        setRedFrameFromRatio(); // 固定比例
         if (++tries > 10) clearInterval(t);
       }, 120);
     };
@@ -257,9 +243,7 @@ saveBtn.onclick = () => {
 };
 
 window.addEventListener("resize", () => {
-  if (video.videoWidth && video.videoHeight) {
-    setRedFrameFromRatio(video.videoWidth / video.videoHeight);
-  }
+  setRedFrameFromRatio(); // 固定比例
 });
 
 initCamera();
