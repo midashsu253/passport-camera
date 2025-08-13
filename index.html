@@ -1,252 +1,392 @@
 <!DOCTYPE html>
+
 <html lang="zh-Hant">
-<head>
+<head><script>
+(() => {
+  const ua = navigator.userAgent || navigator.vendor || window.opera || "";
+  const isLINE = /Line\/|Linemessenger/i.test(ua);
+  const isFB   = /FBAN|FB_IAB|FBAV/i.test(ua);
+  const isIG   = /Instagram/i.test(ua);
+  const isInApp = isLINE || isFB || isIG;
+
+  if (!isInApp) return; // 一般瀏覽器就不要動，避免重導
+
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+
+  const url = window.location.href;
+  const isHttps = /^https:\/\//i.test(url);
+  const withoutScheme = url.replace(/^https?:\/\//i, "");
+
+  function openExternalOnIOS() {
+    // iOS: http -> googlechrome:// ；https -> googlechromes://
+    const chromeURL = (isHttps ? "googlechromes://" : "googlechrome://") + withoutScheme;
+    window.location.href = chromeURL;
+    setTimeout(() => {
+      alert("\u26A0\uFE0F 若未成功外開，請點右上角「在 Safari 開啟」，或複製連結改用 Safari/Chrome。");
+    }, 600);
+  }
+
+  function openExternalOnAndroid() {
+    // Android: 使用 Intent，並加上 fallback
+    const intent = `intent://${withoutScheme}` +
+      `#Intent;scheme=${isHttps ? "https" : "http"};` +
+      `package=com.android.chrome;` +
+      `S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    window.location.href = intent;
+    setTimeout(() => {
+      alert("\u26A0\uFE0F 若未自動跳出 Chrome，請於右上角選單選「在外部瀏覽器開啟」。");
+    }, 600);
+  }
+
+  // 可選：若導入 LIFF，成功率最高（iOS/Android 都能外開）
+  // if (isLINE && typeof liff !== "undefined") {
+  //   liff.init({ liffId: "YOUR_LIFF_ID" }).then(() => {
+  //     liff.openWindow({ url, external: true });
+  //   }).catch(() => { isIOS ? openExternalOnIOS() : isAndroid && openExternalOnAndroid(); });
+  //   return;
+  // }
+
+  if (isIOS) openExternalOnIOS();
+  else if (isAndroid) openExternalOnAndroid();
+})();
+</script>
 <meta charset="utf-8"/>
-<title>護照拍照裁切 - 固定比例紅框</title>
+<title>護照拍照裁切 - 紅框比例修正</title>
 <style>
-    html, body { margin:0; padding:0; width:100%; height:100%; background:black; overflow:hidden; font-family:sans-serif; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: black;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
     #camera-container { position:fixed; inset:0; }
-    video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:black; z-index:1; }
-    #canvas, #canvas-buffer { display:none; }
-    #red-frame { position:absolute; border:3px solid red; box-sizing:border-box; z-index:10; }
-    #red-line { position:absolute; height:3px; background:red; z-index:11; }
-    #controls { position:absolute; bottom:10px; width:100%; text-align:center; z-index:20; }
-    button { padding:10px 20px; margin:10px; font-size:16px; }
-    #preview-container { display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:black; justify-content:center; align-items:center; flex-direction:column; z-index:30; }
-    #preview-container img { max-width:90%; max-height:80%; }
-</style>
+    video {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: black;
+      z-index: 1;
+    }
+    #canvas, #canvas-buffer {
+      display: none;
+    }
+    #red-frame {
+      position: absolute;
+      border: 3px solid red;
+      box-sizing: border-box;
+      z-index: 10;
+    }
+    #red-line {
+      position: absolute;
+      height: 3px;
+      background: red;
+      z-index: 11;
+    }
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      width: 100%;
+      text-align: center;
+      z-index: 20;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+    }
+    #preview-container {
+      display: none;
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 30;
+    }
+    #preview-container img {
+      max-width: 90%;
+      max-height: 80%;
+    }
+  </style>
 <style>
+/* === Bigger, responsive buttons (no other behavior changes) === */
+html { -webkit-text-size-adjust: 100%; }
 #controls { 
-  position:absolute; left:0; right:0; bottom:0; text-align:center; z-index:20;
-  padding:max(12px,1.8vh) 16px calc(env(safe-area-inset-bottom) + max(12px,1.8vh));
+  position: absolute; left: 0; right: 0; bottom: 0; 
+  text-align: center; z-index: 20;
+  padding: max(12px, 1.8vh) 16px calc(env(safe-area-inset-bottom) + max(12px, 1.8vh));
 }
 #controls button {
-  font-size:clamp(18px,4.8vw,28px) !important;
-  padding:max(12px,1.6vh) max(20px,4.8vw) !important;
-  min-width:min(80vw,420px) !important;
-  min-height:max(56px,6.2vh) !important;
-  border-radius:14px !important;
+  font-size: clamp(18px, 4.8vw, 28px) !important;
+  padding: max(12px, 1.6vh) max(20px, 4.8vw) !important;
+  min-width: min(80vw, 420px) !important;
+  min-height: max(56px, 6.2vh) !important;   /* >=44pt on iOS */
+  border-radius: 14px !important;
 }
 #preview-container button {
-  font-size:clamp(18px,4.2vw,24px) !important;
-  padding:max(12px,1.4vh) max(20px,4.0vw) !important;
-  min-width:min(42vw,260px) !important;
-  min-height:max(54px,5.6vh) !important;
-  border-radius:12px !important;
-  margin:8px;
+  font-size: clamp(18px, 4.2vw, 24px) !important;
+  padding: max(12px, 1.4vh) max(20px, 4.0vw) !important;
+  min-width: min(42vw, 260px) !important;
+  min-height: max(54px, 5.6vh) !important;
+  border-radius: 12px !important;
+  margin: 8px;
 }
-</style>
-</head>
+</style></head>
 <body>
 <div id="camera-container">
-  <video autoplay id="video" playsinline></video>
-  <canvas id="canvas"></canvas>
-  <canvas id="canvas-buffer"></canvas>
-  <div id="red-frame"></div>
-  <div id="red-line"></div>
-  <div id="controls">
-    <button id="capture">📸 拍照</button>
-  </div>
-  <div id="preview-container">
-    <img id="preview-image"/>
-    <div>
-      <button id="retake">重新拍攝</button>
-      <button id="save">繼續拍攝</button>
-    </div>
-  </div>
+<video autoplay="" id="video" playsinline=""></video>
+<canvas id="canvas"></canvas>
+<canvas id="canvas-buffer"></canvas>
+<div id="red-frame"></div>
+<div id="red-line"></div>
+<div id="controls">
+<button id="capture">📸 拍照</button>
 </div>
-
+<div id="preview-container">
+<img id="preview-image"/>
+<div>
+<button id="retake">重新拍攝</button>
+<button id="save">繼續拍攝</button>
+</div>
+</div>
+</div>
 <script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const canvasBuffer = document.getElementById("canvas-buffer");
-const captureBtn = document.getElementById("capture");
-const previewContainer = document.getElementById("preview-container");
-const previewImage = document.getElementById("preview-image");
-const retakeBtn = document.getElementById("retake");
-const saveBtn = document.getElementById("save");
-const redFrame = document.getElementById("red-frame");
-const redLine = document.getElementById("red-line");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const canvasBuffer = document.getElementById("canvas-buffer");
+    const captureBtn = document.getElementById("capture");
+    const previewContainer = document.getElementById("preview-container");
+    const previewImage = document.getElementById("preview-image");
+    const retakeBtn = document.getElementById("retake");
+    const saveBtn = document.getElementById("save");
+    const redFrame = document.getElementById("red-frame");
+    const redLine = document.getElementById("red-line");
 
-// 固定紅框比例為護照 1.42:1
-function setRedFrameFromRatio(videoRatio) {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  let frameWidth, frameHeight;
-  const fixedRatio = 1.42; // 固定比例
-  if (vw / vh > fixedRatio) {
-    frameHeight = vh * 0.8;
-    frameWidth = frameHeight * fixedRatio;
-  } else {
-    frameWidth = vw * 0.8;
-    frameHeight = frameWidth / fixedRatio;
-  }
-  const frameLeft = (vw - frameWidth) / 2;
-  const frameTop = (vh - frameHeight) / 2;
-  redFrame.style.width = frameWidth + "px";
-  redFrame.style.height = frameHeight + "px";
-  redFrame.style.left = frameLeft + "px";
-  redFrame.style.top = frameTop + "px";
-  redLine.style.left = frameLeft + "px";
-  redLine.style.width = frameWidth + "px";
-  redLine.style.top = (frameTop + frameHeight / 2 - 1.5) + "px";
-}
+    function setRedFrameFromRatio(videoRatio) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let frameWidth, frameHeight;
 
-async function initCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { ideal: 3840, max: 3840 },
-        height: { ideal: 2160, max: 2160 },
-        advanced: [{ focusMode: "continuous" }]
-      },
-      audio: false
-    });
-    video.srcObject = stream;
+      // 計算紅框寬高，符合實際相機比例（1.42:1）
+      if (vw / vh > videoRatio) {
+        frameHeight = vh * 0.8;
+        frameWidth = frameHeight * videoRatio;
+      } else {
+        frameWidth = vw * 0.8;
+        frameHeight = frameWidth / videoRatio;
+      }
 
-    // 點擊手動對焦 + 對焦提示圈
-    video.addEventListener("click", async (e) => {
-      const focusRing = document.createElement("div");
-      focusRing.style.position = "absolute";
-      focusRing.style.border = "2px solid yellow";
-      focusRing.style.borderRadius = "50%";
-      focusRing.style.width = "80px";
-      focusRing.style.height = "80px";
-      focusRing.style.pointerEvents = "none";
-      focusRing.style.left = (e.clientX - 40) + "px";
-      focusRing.style.top = (e.clientY - 40) + "px";
-      focusRing.style.zIndex = 999;
-      focusRing.style.transition = "transform 0.5s ease-out, opacity 0.5s ease-out";
-      document.body.appendChild(focusRing);
-      setTimeout(() => {
-        focusRing.style.transform = "scale(0.5)";
-        focusRing.style.opacity = "0";
-      }, 10);
-      setTimeout(() => focusRing.remove(), 500);
+      const frameLeft = (vw - frameWidth) / 2;
+      const frameTop = (vh - frameHeight) / 2;
 
-      const track = video.srcObject?.getVideoTracks?.()[0];
-      if (!track) return;
+      redFrame.style.width = frameWidth + "px";
+      redFrame.style.height = frameHeight + "px";
+      redFrame.style.left = frameLeft + "px";
+      redFrame.style.top = frameTop + "px";
+
+      redLine.style.left = frameLeft + "px";
+      redLine.style.width = frameWidth + "px";
+      redLine.style.top = (frameTop + frameHeight / 2 - 1.5) + "px";
+    }
+
+    async function initCamera() {
       try {
-        await track.applyConstraints({ advanced: [{ focusMode: "manual" }] });
-        setTimeout(() => {
-          track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
-        }, 500);
+        // 高品質相機設定 - 要求最高可用解析度
+        const constraints = {
+          video: {
+            facingMode: "environment",
+            width: { ideal: 4096, min: 1920 },  // 提高解析度要求
+            height: { ideal: 3072, min: 1080 }, // 提高解析度要求
+            aspectRatio: { ideal: 4/3 },        // 建議 4:3 比例獲得更好品質
+            frameRate: { ideal: 30, min: 15 },  // 穩定幀率
+            focusMode: { ideal: "continuous" }   // 連續對焦
+          },
+          audio: false
+        };
+
+        // 嘗試高品質設定，如失敗則降級
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (highResError) {
+          console.log("高解析度失敗，嘗試標準解析度:", highResError);
+          // 降級設定
+          const fallbackConstraints = {
+            video: {
+              facingMode: "environment",
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1440, min: 720 },
+              frameRate: { ideal: 30 }
+            },
+            audio: false
+          };
+          stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        }
+
+        video.srcObject = stream;
+
+        video.onloadedmetadata = () => {
+          console.log(`相機解析度: ${video.videoWidth}x${video.videoHeight}`);
+          
+          // 等待相機完全穩定再設定紅框
+          setTimeout(() => {
+            const videoRatio = video.videoWidth / video.videoHeight;
+            setRedFrameFromRatio(videoRatio);
+            
+            // iOS 相容性：多次重算確保正確
+            let tries = 0; 
+            const retryInterval = setInterval(() => { 
+              setRedFrameFromRatio(videoRatio); 
+              if (++tries > 8) clearInterval(retryInterval); 
+            }, 150);
+          }, 200);
+        };
+
       } catch (err) {
-        console.warn("裝置不支援手動對焦:", err);
+        alert("無法存取相機: " + err);
+        console.error("相機初始化錯誤:", err);
+      }
+    }
+
+    function cropAndPreview() {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+
+      // 使用實際相機解析度作為緩衝區
+      canvasBuffer.width = vw;
+      canvasBuffer.height = vh;
+      const bufferCtx = canvasBuffer.getContext("2d");
+      
+      // 高品質繪製設定
+      bufferCtx.imageSmoothingEnabled = true;
+      bufferCtx.imageSmoothingQuality = "high";
+      bufferCtx.drawImage(video, 0, 0, vw, vh);
+
+      const redBox = redFrame.getBoundingClientRect();
+      const videoBox = video.getBoundingClientRect();
+
+      const displayRatio = videoBox.width / videoBox.height;
+      const videoRatio = vw / vh;
+
+      let offsetX = 0, offsetY = 0;
+
+      if (displayRatio > videoRatio) {
+        offsetX = (videoBox.width - videoBox.height * videoRatio) / 2;
+      } else {
+        offsetY = (videoBox.height - videoBox.width / videoRatio) / 2;
+      }
+
+      const cropX = (redBox.left - videoBox.left - offsetX) * (vw / (videoBox.width - 2 * offsetX));
+      const cropY = (redBox.top - videoBox.top - offsetY + redBox.height / 2) * (vh / (videoBox.height - 2 * offsetY));
+      const cropW = redBox.width * (vw / (videoBox.width - 2 * offsetX));
+      const cropH = redBox.height / 2 * (vh / (videoBox.height - 2 * offsetY));
+
+      // 高解析度輸出 - 提升最終品質
+      canvas.width = 1476;
+      canvas.height = 1040;
+      const ctx = canvas.getContext("2d");
+      
+      // 高品質繪製設定
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      
+      // 精確裁切並縮放
+      ctx.drawImage(canvasBuffer, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+
+      // 影像強化（保持原有增強功能）
+      enhanceCanvasInPlace(canvas);
+
+      // 使用高品質 JPEG 格式，品質設為 95%
+      const dataURL = canvas.toDataURL("image/jpeg", 0.95);
+      previewImage.src = dataURL;
+      previewContainer.style.display = "flex";
+      saveBtn.dataset.url = dataURL;
+    }
+
+    
+    // ===== 影像強化：只在輸出 canvas 上處理，其他流程不變 =====
+    function enhanceCanvasInPlace(outCanvas) {
+      const cfg = { gammaTarget: 0.50, usmAmt: 0.40, usmSigma: 1.2, wbClampMin: 0.85, wbClampMax: 1.15 };
+      const w = outCanvas.width, h = outCanvas.height;
+      const ctx = outCanvas.getContext("2d", { willReadFrequently: true });
+      let imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      const n = data.length;
+      const clamp255 = (x)=> x < 0 ? 0 : (x > 255 ? 255 : x);
+
+      // 1) Gray-World 白平衡（限制增益，避免偏色過度）
+      let sumR=0, sumG=0, sumB=0, count = n / 4;
+      for (let i = 0; i < n; i += 4) { sumR += data[i]; sumG += data[i+1]; sumB += data[i+2]; }
+      const mR = sumR / count, mG = sumG / count, mB = sumB / count;
+      const m = (mR + mG + mB) / 3;
+      const gR = Math.max(cfg.wbClampMin, Math.min(cfg.wbClampMax, m / (mR || 1)));
+      const gG = Math.max(cfg.wbClampMin, Math.min(cfg.wbClampMax, m / (mG || 1)));
+      const gB = Math.max(cfg.wbClampMin, Math.min(cfg.wbClampMax, m / (mB || 1)));
+      for (let i = 0; i < n; i += 4) {
+        data[i]   = clamp255(Math.round(data[i]   * gR));
+        data[i+1] = clamp255(Math.round(data[i+1] * gG));
+        data[i+2] = clamp255(Math.round(data[i+2] * gB));
+      }
+
+      // 2) 自動 Gamma（把亮度拉回中灰）
+      let sumY = 0;
+      for (let i = 0; i < n; i += 4) sumY += 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
+      const meanY = (sumY / count) / 255;
+      let gamma = 1.0;
+      if (meanY > 0 && meanY < 1) gamma = Math.log(cfg.gammaTarget) / Math.log(meanY);
+      gamma = Math.max(0.6, Math.min(1.6, gamma));
+      const lut = new Uint8ClampedArray(256);
+      for (let i = 0; i < 256; i++) lut[i] = clamp255(Math.round(Math.pow(i/255, gamma) * 255));
+      for (let i = 0; i < n; i += 4) { data[i] = lut[data[i]]; data[i+1] = lut[data[i+1]]; data[i+2] = lut[data[i+2]]; }
+
+      // 3) 溫和銳利化（Unsharp Mask：orig*(1+a) - blur*a）
+      const work = document.createElement("canvas");
+      work.width = w; work.height = h;
+      const wctx = work.getContext("2d");
+      wctx.putImageData(imgData, 0, 0);
+
+      const blur = document.createElement("canvas");
+      blur.width = w; blur.height = h;
+      const bctx = blur.getContext("2d");
+      bctx.filter = `blur(${cfg.usmSigma}px)`;
+      bctx.drawImage(work, 0, 0);
+      const blurData = bctx.getImageData(0, 0, w, h).data;
+
+      const a = cfg.usmAmt;
+      for (let i = 0; i < n; i += 4) {
+        const br = blurData[i], bg = blurData[i+1], bb = blurData[i+2];
+        data[i]   = clamp255(Math.round(data[i]   * (1 + a) - br * a));
+        data[i+1] = clamp255(Math.round(data[i+1] * (1 + a) - bg * a));
+        data[i+2] = clamp255(Math.round(data[i+2] * (1 + a) - bb * a));
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+
+    captureBtn.onclick = () => cropAndPreview();
+    retakeBtn.onclick = () => previewContainer.style.display = "none";
+    saveBtn.onclick = () => {
+      const link = document.createElement("a");
+      link.href = saveBtn.dataset.url;
+      link.download = "passport.jpg";  // 改為 jpg 格式
+      link.click();
+      previewContainer.style.display = "none";
+    };
+
+    window.addEventListener("resize", () => {
+      if (video.videoWidth && video.videoHeight) {
+        setRedFrameFromRatio(video.videoWidth / video.videoHeight);
       }
     });
 
-    video.onloadedmetadata = () => {
-      let tries = 0;
-      const t = setInterval(() => {
-        setRedFrameFromRatio(); // 固定比例
-        if (++tries > 10) clearInterval(t);
-      }, 120);
-    };
-  } catch (err) {
-    alert("無法存取相機: " + err);
-  }
-}
-
-function cropAndPreview() {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  canvasBuffer.width = vw;
-  canvasBuffer.height = vh;
-  const bufferCtx = canvasBuffer.getContext("2d");
-  bufferCtx.drawImage(video, 0, 0, vw, vh);
-  const redBox = redFrame.getBoundingClientRect();
-  const videoBox = video.getBoundingClientRect();
-  const displayRatio = videoBox.width / videoBox.height;
-  const videoRatio = vw / vh;
-  let offsetX = 0, offsetY = 0;
-  if (displayRatio > videoRatio) {
-    offsetX = (videoBox.width - videoBox.height * videoRatio) / 2;
-  } else {
-    offsetY = (videoBox.height - videoBox.width / videoRatio) / 2;
-  }
-  const cropX = (redBox.left - videoBox.left - offsetX) * (vw / (videoBox.width - 2 * offsetX));
-  const cropY = (redBox.top - videoBox.top - offsetY + redBox.height / 2) * (vh / (videoBox.height - 2 * offsetY));
-  const cropW = redBox.width * (vw / (videoBox.width - 2 * offsetX));
-  const cropH = redBox.height / 2 * (vh / (videoBox.height - 2 * offsetY));
-  canvas.width = 1476;
-  canvas.height = 1040;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(canvasBuffer, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
-  enhanceCanvasInPlace(canvas);
-  const dataURL = canvas.toDataURL("image/bmp");
-  previewImage.src = dataURL;
-  previewContainer.style.display = "flex";
-  saveBtn.dataset.url = dataURL;
-}
-
-function enhanceCanvasInPlace(outCanvas) {
-  const cfg = { gammaTarget: 0.50, usmAmt: 0.40, usmSigma: 1.2, wbClampMin: 0.85, wbClampMax: 1.15 };
-  const w = outCanvas.width, h = outCanvas.height;
-  const ctx = outCanvas.getContext("2d", { willReadFrequently: true });
-  let imgData = ctx.getImageData(0, 0, w, h);
-  const data = imgData.data;
-  const n = data.length;
-  const clamp255 = (x)=> x < 0 ? 0 : (x > 255 ? 255 : x);
-  let sumR=0, sumG=0, sumB=0, count = n / 4;
-  for (let i = 0; i < n; i += 4) { sumR += data[i]; sumG += data[i+1]; sumB += data[i+2]; }
-  const mR = sumR / count, mG = sumG / count, mB = sumB / count;
-  const m = (mR + mG + mB) / 3;
-  const gR = Math.max(cfg.wbClampMin, Math.min(cfg.wbClampMax, m / (mR || 1)));
-  const gG = Math.max(cfg.wbClampMin, Math.min(cfg.wbClampMax, m / (mG || 1)));
-  const gB = Math.max(cfg.wbClampMin, Math.min(cfg.wbClampMax, m / (mB || 1)));
-  for (let i = 0; i < n; i += 4) {
-    data[i]   = clamp255(Math.round(data[i]   * gR));
-    data[i+1] = clamp255(Math.round(data[i+1] * gG));
-    data[i+2] = clamp255(Math.round(data[i+2] * gB));
-  }
-  let sumY = 0;
-  for (let i = 0; i < n; i += 4) sumY += 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
-  const meanY = (sumY / count) / 255;
-  let gamma = 1.0;
-  if (meanY > 0 && meanY < 1) gamma = Math.log(cfg.gammaTarget) / Math.log(meanY);
-  gamma = Math.max(0.6, Math.min(1.6, gamma));
-  const lut = new Uint8ClampedArray(256);
-  for (let i = 0; i < 256; i++) lut[i] = clamp255(Math.round(Math.pow(i/255, gamma) * 255));
-  for (let i = 0; i < n; i += 4) { data[i] = lut[data[i]]; data[i+1] = lut[data[i+1]]; data[i+2] = lut[data[i+2]]; }
-  const work = document.createElement("canvas");
-  work.width = w; work.height = h;
-  const wctx = work.getContext("2d");
-  wctx.putImageData(imgData, 0, 0);
-  const blur = document.createElement("canvas");
-  blur.width = w; blur.height = h;
-  const bctx = blur.getContext("2d");
-  bctx.filter = `blur(${cfg.usmSigma}px)`;
-  bctx.drawImage(work, 0, 0);
-  const blurData = bctx.getImageData(0, 0, w, h).data;
-  const a = cfg.usmAmt;
-  for (let i = 0; i < n; i += 4) {
-    const br = blurData[i], bg = blurData[i+1], bb = blurData[i+2];
-    data[i]   = clamp255(Math.round(data[i]   * (1 + a) - br * a));
-    data[i+1] = clamp255(Math.round(data[i+1] * (1 + a) - bg * a));
-    data[i+2] = clamp255(Math.round(data[i+2] * (1 + a) - bb * a));
-  }
-  ctx.putImageData(imgData, 0, 0);
-}
-
-captureBtn.onclick = () => cropAndPreview();
-retakeBtn.onclick = () => previewContainer.style.display = "none";
-saveBtn.onclick = () => {
-  const link = document.createElement("a");
-  link.href = saveBtn.dataset.url;
-  link.download = "passport.bmp";
-  link.click();
-  previewContainer.style.display = "none";
-};
-
-window.addEventListener("resize", () => {
-  setRedFrameFromRatio(); // 固定比例
-});
-
-initCamera();
-</script>
+    initCamera();
+  </script>
 </body>
 </html>
