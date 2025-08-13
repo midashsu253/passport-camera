@@ -303,8 +303,8 @@ html { -webkit-text-size-adjust: 100%; }
       // 影像強化（保持原有增強功能）
       enhanceCanvasInPlace(canvas);
 
-      // 使用高品質 JPEG 格式，品質設為 95%
-      const dataURL = canvas.toDataURL("image/jpeg", 0.95);
+      // 使用 BMP 格式避免 LINE 傳輸壓縮
+      const dataURL = canvas.toDataURL("image/bmp");
       previewImage.src = dataURL;
       previewContainer.style.display = "flex";
       saveBtn.dataset.url = dataURL;
@@ -375,7 +375,7 @@ html { -webkit-text-size-adjust: 100%; }
     saveBtn.onclick = () => {
       const link = document.createElement("a");
       link.href = saveBtn.dataset.url;
-      link.download = "passport.jpg";  // 改為 jpg 格式
+      link.download = "passport.bmp";  // BMP 格式避免壓縮
       link.click();
       previewContainer.style.display = "none";
     };
